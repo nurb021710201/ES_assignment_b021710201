@@ -1,0 +1,96 @@
+/*----------------------------------------------------------------------------
+	
+	Designers Guide to the Cortex-M Family
+	CMSIS RTOS Mutex Example
+
+*----------------------------------------------------------------------------*/
+#include "stm32f10x.h"
+#include "cmsis_os.h"
+#include "uart.h"
+
+void Thread1 (void const *argument);
+void Thread2 (void const *argument);
+osThreadDef(Thread1, osPriorityNormal, 1, 0);
+osThreadDef(Thread2, osPriorityNormal, 1, 0);
+
+osThreadId T_Thread1;
+osThreadId T_Thread2;
+	
+osMutexId x_mutex;
+osMutexDef(x_mutex);
+
+osSemaphoreId items;
+osSemaphoreDef(items);
+
+osSemaphoreId space;
+osSemaphoreId(space);
+
+const unsigned int max_size = 8;
+unsigned char buffer[max_size];
+unsigned int head = 0;
+unsigned int tail = 0;
+unsigned char x = 0x30;
+
+unsigned char get ()
+
+{
+	unsigned int rr = 0xff;
+	osSemaphoreWait(items, osWaitForever);
+	osMutexWait(x_mutex, osWaitForever);
+	
+	tail = (tail + 1) % max_size;
+	osMutexRelease(x_mutex);
+	osSemaphoreRelease(space);
+	return rr;
+}
+
+void add (unsigned char value)
+{
+	osSemaphoreWait(space, osWaitForever);
+	osMutexWait(x_mutex, osWaitForever);
+	buffer[head] = value;
+	head = (head + 1) % max_size;
+	osMutexRelease(x_mutex);
+	osSemaphoreRelease(items);
+}
+
+void Thread1 (void const *argument) 
+{
+	a:
+	for (;;) 
+	{		
+		if (x < 0x38)
+		{
+			add (x++);
+		}
+		else
+		{
+			x = 0x30;
+		goto a;
+		}
+	}
+}
+
+void Thread2 (void const *argument) 
+{
+	unsigned int data = 0;
+	for(;;)
+	{
+	data = get();
+	SendChar(data);
+	}
+}
+
+
+int main (void) 
+{
+	osKernelInitialize ();                    // initialize CMSIS-RTOS
+	
+	x_mutex = osMutexCreate(osMutex(x_mutex));	
+	items = osSemaphoreCreate(osSemaphore(items), 0);
+	
+	T_Thread1 = osThreadCreate(osThread(Thread1), NULL);
+	T_Thread2 = osThreadCreate(osThread(Thread2), NULL);
+ 
+	osKernelStart ();                         // start thread execution 
+}
